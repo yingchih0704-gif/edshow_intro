@@ -4,16 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>教育策展與實踐：三層次敘事文案練習單</title>
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- React & ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <!-- Babel for JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- FontAwesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- jsPDF & html2canvas -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
@@ -72,17 +67,77 @@
                 if (!printRef.current) return;
                 setIsGenerating(true);
 
+                // 建立一個臨時容器來放置複製的元素
+                const ghostContainer = document.createElement('div');
+                
                 try {
                     await new Promise(resolve => setTimeout(resolve, 100));
 
                     const element = printRef.current;
-                    const canvas = await html2canvas(element, {
+                    
+                    // --- 關鍵修正開始 ---
+                    
+                    // 1. 複製 DOM 節點
+                    const clone = element.cloneNode(true);
+                    
+                    // 2. 設定臨時容器樣式 (確保在畫面外但可見，且寬度一致)
+                    ghostContainer.style.position = 'absolute';
+                    ghostContainer.style.top = '-9999px';
+                    ghostContainer.style.left = '0';
+                    ghostContainer.style.width = `${element.offsetWidth}px`;
+                    ghostContainer.style.zIndex = '-1';
+                    ghostContainer.style.backgroundColor = '#ffffff'; // 強制白底
+                    document.body.appendChild(ghostContainer);
+                    ghostContainer.appendChild(clone);
+
+                    // 3. 將使用者的輸入值同步到 Clone 的節點中，並將 Textarea 替換為 Div
+                    const originalInputs = element.querySelectorAll('input, textarea');
+                    const clonedInputs = clone.querySelectorAll('input, textarea');
+
+                    originalInputs.forEach((original, index) => {
+                        const cloned = clonedInputs[index];
+                        
+                        // 處理 Radio Buttons (確保選中狀態被複製)
+                        if (original.type === 'radio' || original.type === 'checkbox') {
+                            if (original.checked) {
+                                cloned.setAttribute('checked', 'true');
+                                cloned.checked = true;
+                            }
+                        } 
+                        // 處理 Textarea (轉為 div 以避免文字被截斷或遮擋)
+                        else if (original.tagName === 'TEXTAREA') {
+                            const div = document.createElement('div');
+                            // 複製原本的 class 樣式
+                            div.className = cloned.className;
+                            // 修正樣式以適應 PDF
+                            div.style.height = 'auto'; // 自動高度
+                            div.style.minHeight = original.clientHeight + 'px'; // 至少維持原本高度
+                            div.style.whiteSpace = 'pre-wrap'; // 保留換行
+                            div.style.overflow = 'visible';
+                            div.style.resize = 'none';
+                            div.style.borderColor = '#d1d5db'; // 確保邊框顏色清晰
+                            div.innerText = original.value; // 填入文字
+                            
+                            // 替換節點
+                            cloned.parentNode.replaceChild(div, cloned);
+                        }
+                        // 處理一般 Input (Text, Date)
+                        else {
+                            cloned.setAttribute('value', original.value);
+                            cloned.value = original.value;
+                        }
+                    });
+
+                    // --- 關鍵修正結束 ---
+
+                    // 4. 對 Clone 進行截圖
+                    const canvas = await html2canvas(clone, {
                         scale: 2,
                         useCORS: true,
                         logging: false,
                         backgroundColor: '#ffffff',
-                        windowWidth: element.scrollWidth,
-                        windowHeight: element.scrollHeight
+                        windowWidth: ghostContainer.scrollWidth,
+                        windowHeight: ghostContainer.scrollHeight
                     });
 
                     const imgData = canvas.toDataURL('image/png');
@@ -114,6 +169,10 @@
                     console.error('PDF generation failed', error);
                     alert('PDF 生成失敗，建議使用瀏覽器的「列印 (Ctrl+P) -> 另存為 PDF」功能。');
                 } finally {
+                    // 清理 DOM
+                    if (document.body.contains(ghostContainer)) {
+                        document.body.removeChild(ghostContainer);
+                    }
                     setIsGenerating(false);
                 }
             };
@@ -123,7 +182,7 @@
                     {/* 控制列 */}
                     <div className="max-w-4xl mx-auto mb-6 flex justify-between items-center bg-white p-4 rounded-lg shadow-sm no-print border border-emerald-100">
                         <h1 className="text-xl font-bold text-emerald-900">教育策展與實踐：三層次敘事文案練習單</h1>
-                        <button
+                        <button 
                             onClick={handleDownloadPdf}
                             disabled={isGenerating}
                             className={`flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded hover:bg-emerald-700 transition-colors ${isGenerating ? 'opacity-50 cursor-not-allowed' : ''}`}
